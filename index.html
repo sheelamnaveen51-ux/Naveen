@@ -1,0 +1,311 @@
+```react
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  Activity, AlertTriangle, CheckCircle2, ChevronRight, Stethoscope, 
+  FileText, ShieldAlert, HeartPulse, Search, Plus, X, Thermometer, 
+  Wind, Droplet, User, Award, Brain, Info, AlertCircle, RefreshCw, 
+  Printer, ArrowRight, BookOpen, Layers, CheckSquare, Eye, Sliders,
+  HelpCircle, Compass, Zap
+} from 'lucide-react';
+
+const BODY_REGIONS = [
+  { id: 'all', label: 'All Regions', icon: Compass },
+  { id: 'head_neck', label: 'Head & Neck', icon: Brain },
+  { id: 'thorax', label: 'Thorax & Heart', icon: HeartPulse },
+  { id: 'abdomen', label: 'Abdomen & GI', icon: Droplet },
+  { id: 'extremities', label: 'Extremities & Musculoskeletal', icon: Activity },
+  { id: 'systemic', label: 'Systemic / Constitutional', icon: Thermometer },
+];
+
+const AVAILABLE_SYMPTOMS = [
+  // Thorax
+  { id: 'chest_pain_crushing', name: 'Substernal Crushing Chest Pain', region: 'thorax', redFlag: true },
+  { id: 'chest_pain_pleuritic', name: 'Pleuritic Chest Pain (sharp with deep breath)', region: 'thorax', redFlag: false },
+  { id: 'dyspnea_rest', name: 'Shortness of Breath at Rest', region: 'thorax', redFlag: true },
+  { id: 'dyspnea_exertion', name: 'Dyspnea on Exertion', region: 'thorax', redFlag: false },
+  { id: 'palpitations', name: 'Palpitations / Tachycardia', region: 'thorax', redFlag: false },
+  { id: 'cough_productive', name: 'Productive Cough with purulent sputum', region: 'thorax', redFlag: false },
+  { id: 'hemoptysis', name: 'Hemoptysis (Coughing blood)', region: 'thorax', redFlag: true },
+  
+  // Abdomen
+  { id: 'rlq_pain', name: 'Right Lower Quadrant (RLQ) Pain', region: 'abdomen', redFlag: true },
+  { id: 'ruq_pain', name: 'Right Upper Quadrant (RUQ) Pain / Murphy Sign', region: 'abdomen', redFlag: false },
+  { id: 'epigastric_pain', name: 'Epigastric Pain radiating to back', region: 'abdomen', redFlag: false },
+  { id: 'nausea_vomiting', name: 'Persistent Nausea & Vomiting', region: 'abdomen', redFlag: false },
+  { id: 'melena_hematemesis', name: 'Melena (dark stool) or Hematemesis', region: 'abdomen', redFlag: true },
+  
+  // Head & Neck
+  { id: 'thunderclap_headache', name: 'Sudden "Worst Headache of Life" (Thunderclap)', region: 'head_neck', redFlag: true },
+  { id: 'neck_stiffness', name: 'Nuchal Rigidity (Stiff Neck) + Photophobia', region: 'head_neck', redFlag: true },
+  { id: 'facial_droop_speech', name: 'Acute Facial Droop or Slurred Speech', region: 'head_neck', redFlag: true },
+  { id: 'vertigo', name: 'Rotational Vertigo & Nystagmus', region: 'head_neck', redFlag: false },
+  
+  // Extremities
+  { id: 'unilateral_leg_swelling', name: 'Unilateral Asymmetric Calf Swelling / Pain', region: 'extremities', redFlag: true },
+  { id: 'joint_erythema', name: 'Acute Warm, Erythematous Single Joint', region: 'extremities', redFlag: false },
+  
+  // Systemic
+  { id: 'high_fever_chills', name: 'High Fever (>38.5°C / 101.3°F) & Shaking Chills', region: 'systemic', redFlag: false },
+  { id: 'syncope', name: 'Syncope (Fainting / Loss of consciousness)', region: 'systemic', redFlag: true },
+  { id: 'diaphoresis', name: 'Cold Clammy Diaphoresis (Profuse sweating)', region: 'systemic', redFlag: false },
+  { id: 'fatigue_weight_loss', name: 'Chronic Fatigue & Unintentional Weight Loss', region: 'systemic', redFlag: false },
+];
+
+const CLINICAL_CONDITIONS = [
+  {
+    id: 'ami',
+    title: 'Acute Coronary Syndrome (STEMI / NSTEMI)',
+    urgency: 'critical',
+    matchedSymptoms: ['chest_pain_crushing', 'dyspnea_rest', 'diaphoresis', 'syncope'],
+    justification: 'Classical crushing substernal chest pressure associated with diaphoresis, dyspnea, and ischemic markers.',
+    distinguishingFeatures: 'Elevated Cardiac Troponins, ST-segment deviations or T-wave inversions on 12-lead ECG, response to nitrates.',
+    diagnosticWorkup: [
+      'Stat 12-Lead ECG within 10 minutes',
+      'High-Sensitivity Troponin I/T series (0h, 1h/3h)',
+      'CK-MB, Electrolytes, Renal Panel',
+      'Point-of-Care Echocardiogram (wall motion assessment)',
+      'Immediate Cardiology activation for emergent catheterization if STEMI'
+    ]
+  },
+  {
+    id: 'pe',
+    title: 'Acute Pulmonary Embolism (PE)',
+    urgency: 'critical',
+    matchedSymptoms: ['dyspnea_rest', 'chest_pain_pleuritic', 'unilateral_leg_swelling', 'hemoptysis', 'palpitations'],
+    justification: 'Acute onset pleuritic chest discomfort, sudden dyspnea, tachycardia, and unilateral DVT calf signs.',
+    distinguishingFeatures: 'Hypoxemia on room air, sinus tachycardia, S1Q3T3 pattern on ECG, elevated D-dimer, fill defect on CTPA.',
+    diagnosticWorkup: [
+      'CT Pulmonary Angiography (CTPA) or V/Q Scan if renal impaired',
+      'Quantitative High-Sensitivity D-Dimer',
+      'Arterial Blood Gas (ABG) for A-a gradient',
+      'Venous Duplex Ultrasound of lower extremities',
+      'Bedside Echo (RV strain, McConnell sign)'
+    ]
+  },
+  {
+    id: 'pneumonia',
+    title: 'Community-Acquired Pneumonia (CAP)',
+    urgency: 'urgent',
+    matchedSymptoms: ['cough_productive', 'high_fever_chills', 'chest_pain_pleuritic', 'dyspnea_exertion'],
+    justification: 'Infectious lower respiratory syndrome with purulent sputum, focal consolidation, and febrile spikes.',
+    distinguishingFeatures: 'Focal crackles / bronchial breath sounds, lobar consolidation on chest radiograph, leukocytosis.',
+    diagnosticWorkup: [
+      'Chest X-Ray (PA and Lateral views)',
+      'Complete Blood Count (CBC) with differential & CRP',
+      'Blood Cultures (x2 sets prior to antibiotic initiation)',
+      'Sputum Gram stain & bacterial culture',
+      'CURB-65 assessment for inpatient vs outpatient stratification'
+    ]
+  },
+  {
+    id: 'appendicitis',
+    title: 'Acute Appendicitis',
+    urgency: 'critical',
+    matchedSymptoms: ['rlq_pain', 'nausea_vomiting', 'high_fever_chills'],
+    justification: 'Periumbilical pain migrating to McBurney point with localized peritoneal signs and systemic fever.',
+    distinguishingFeatures: 'Rovsing sign, Psoas sign, localized rebound tenderness, appendiceal wall thickening >6mm on imaging.',
+    diagnosticWorkup: [
+      'Contrast-enhanced Abdominopelvic CT or Grayscale Ultrasound (first-line in children/pregnancy)',
+      'Serum CBC with differential (leukocytosis with left shift)',
+      'Urinalysis (to rule out nephrolithiasis/UTI)',
+      'Serum beta-hCG (in women of reproductive age)',
+      'NPO and early General Surgery consultation'
+    ]
+  },
+  {
+    id: 'stroke',
+    title: 'Acute Ischemic Stroke / Cerebrovascular Event',
+    urgency: 'critical',
+    matchedSymptoms: ['facial_droop_speech', 'vertigo', 'syncope'],
+    justification: 'Focal acute neurological deficit with hemiparesis or dysarthria within therapeutic time windows.',
+    distinguishingFeatures: 'Sudden onset focal neurological localization, negative non-contrast head CT for hemorrhage.',
+    diagnosticWorkup: [
+      'Emergent Non-contrast Head CT (rule out hemorrhage within 20 min)',
+      'CT Angiography (CTA) head & neck for Large Vessel Occlusion (LVO)',
+      'Fingerstick blood glucose (rule out hypoglycemia mimic)',
+      'Evaluation for IV thrombolysis (tPA/TNK) within 4.5h window or Endovascular Thrombectomy'
+    ]
+  },
+  {
+    id: 'sah',
+    title: 'Subarachnoid Hemorrhage (Aneurysmal Rupture)',
+    urgency: 'critical',
+    matchedSymptoms: ['thunderclap_headache', 'neck_stiffness', 'nausea_vomiting', 'syncope'],
+    justification: 'Instantaneous peak "thunderclap" headache often with meningismus and transient loss of consciousness.',
+    distinguishingFeatures: 'Hyperdensity in basal cisterns on non-contrast CT; xanthochromia on lumbar puncture if CT is normal.',
+    diagnosticWorkup: [
+      'Immediate Non-contrast Brain CT',
+      'Lumbar Puncture (for RBC count and spectrophotometric xanthochromia if CT normal >6h)',
+      'CT Angiography of intracranial circulation'
+    ]
+  },
+  {
+    id: 'cholecystitis',
+    title: 'Acute Cholecystitis / Biliary Colic',
+    urgency: 'urgent',
+    matchedSymptoms: ['ruq_pain', 'nausea_vomiting', 'high_fever_chills'],
+    justification: 'Persistent RUQ pain exacerbated by postprandial fatty meals, focal inspiratory arrest on palpation.',
+    distinguishingFeatures: 'Sonographic Murphy sign, gallbladder wall thickening >3mm, pericholecystic fluid, gallstones.',
+    diagnosticWorkup: [
+      'Right Upper Quadrant Abdominal Ultrasound',
+      'Liver Function Panel (AST, ALT, ALP, Total & Direct Bilirubin)',
+      'Serum Amylase & Lipase (rule out gallstone pancreatitis)',
+      'Complete Blood Count (CBC)'
+    ]
+  },
+  {
+    id: 'dvt',
+    title: 'Deep Vein Thrombosis (Lower Extremity DVT)',
+    urgency: 'urgent',
+    matchedSymptoms: ['unilateral_leg_swelling', 'diaphoresis'],
+    justification: 'Unilateral calf edema, localized tenderness along deep venous system, with risk factor profile.',
+    distinguishingFeatures: 'Calf circumference discrepancy >3 cm, non-compressible venous segment on compression duplex.',
+    diagnosticWorkup: [
+      'Venous Duplex Ultrasound with color Doppler',
+      'D-Dimer (sensitive rule-out if low/moderate Wells risk)',
+      'Coagulation profile (PT/INR, aPTT)'
+    ]
+  },
+  {
+    id: 'pancreatitis',
+    title: 'Acute Pancreatitis',
+    urgency: 'urgent',
+    matchedSymptoms: ['epigastric_pain', 'nausea_vomiting', 'diaphoresis'],
+    justification: 'Severe band-like epigastric pain radiating to the spine, persistent emesis, associated with alcohol or cholelithiasis.',
+    distinguishingFeatures: 'Serum lipase or amylase >3x upper limit of normal; pancreatic edema on abdominal CT.',
+    diagnosticWorkup: [
+      'Serum Lipase (higher diagnostic sensitivity/specificity than amylase)',
+      'Abdominal Ultrasound (assess for biliary etiology)',
+      'BUN, Creatinine, Electrolytes (for volume depletion & BISAP scoring)',
+      'Contrast CT Abdomen (if necrosis suspected after 48-72h)'
+    ]
+  }
+];
+
+const LAB_REFERENCE_LIBRARY = [
+  {
+    name: 'High-Sensitivity Troponin I (hs-cTnI)',
+    category: 'Cardiovascular',
+    normal: '< 14 ng/L (lab-specific cutoffs apply)',
+    critical: '> 50 ng/L or acute delta rise',
+    significance: 'Gold standard biomarker for myocardial injury and Acute Myocardial Infarction. Non-ischemic elevations include myocarditis, PE, sepsis, and end-stage renal disease.',
+    pearl: 'A rapid 0h/1h or 0h/3h delta algorithm is utilized to rule in or rule out acute coronary syndromes.'
+  },
+  {
+    name: 'Quantitative D-Dimer',
+    category: 'Hematology / Thrombosis',
+    normal: '< 500 ng/mL FEU (Age-adjusted: Age × 10 for >50 yo)',
+    critical: '> 2,000 ng/mL FEU',
+    significance: 'High negative predictive value (>98%) to rule out Pulmonary Embolism and DVT in patients with low-to-moderate pretest probability. Elevated in inflammation, cancer, pregnancy, and post-surgery.',
+    pearl: 'Never use D-Dimer to rule out PE if clinical pretest probability (Wells Score) is high; proceed directly to CTPA.'
+  },
+  {
+    name: 'Serum Procalcitonin (PCT)',
+    category: 'Infectious / Sepsis',
+    normal: '< 0.10 ng/mL',
+    critical: '> 2.0 ng/mL (Severe sepsis / high risk of septic shock)',
+    significance: 'Synthesized by thyroid C-cells and neuroendocrine cells in response to bacterial endotoxins and pro-inflammatory cytokines (IL-1b, TNF-alpha). Blunted during viral infections.',
+    pearl: 'Helpful biomarker for antibiotic stewardship in lower respiratory infections and monitoring bacterial sepsis resolution.'
+  },
+  {
+    name: 'Serum Lipase',
+    category: 'Gastroenterology',
+    normal: '10 - 140 U/L',
+    critical: '> 420 U/L (≥ 3x Upper Limit of Normal)',
+    significance: 'Diagnostic criterion for acute pancreatitis. Remains elevated longer than amylase (7-14 days) and demonstrates superior pancreatic specificity.',
+    pearl: 'Magnitude of elevation does not predict severity of pancreatitis; clinical scoring (BISAP/Ranson) and organ failure do.'
+  },
+  {
+    name: 'Arterial Blood Lactate',
+    category: 'Critical Care / Perfusion',
+    normal: '0.5 - 1.6 mmol/L',
+    critical: '> 4.0 mmol/L',
+    significance: 'Key marker of cellular hypoxia, anaerobic glycolysis, and tissue hypoperfusion in septic, cardiogenic, or hypovolemic shock.',
+    pearl: 'Lactate clearance (reduction of ≥10-20% every 2 hours) is a validated resuscitation target in surviving sepsis guidelines.'
+  },
+  {
+    name: 'B-Type Natriuretic Peptide (BNP)',
+    category: 'Cardiovascular',
+    normal: '< 100 pg/mL (NT-proBNP < 300 pg/mL)',
+    critical: '> 900 pg/mL (in acute decompensation)',
+    significance: 'Released from ventricular cardiomyocytes in response to myocardial wall stress and volume overload. Differentiates cardiac vs. pulmonary causes of acute dyspnea.',
+    pearl: 'Obese patients have lower baseline BNP levels. Neprilysin inhibitors (Sacubitril/Valsartan) raise BNP; use NT-proBNP in those patients.'
+  }
+];
+
+const CLINICAL_CASES = [
+  {
+    id: 'case_1',
+    title: 'Case 01: 58-Year-Old Male with Acute Retrosternal Pressure',
+    category: 'Cardiology / Emergency',
+    difficulty: 'Moderate',
+    vitals: { hr: 98, bp: '154/92', rr: 20, temp: 37.1, spo2: 96 },
+    history: 'A 58-year-old accountant presents with 2 hours of heavy, substernal chest pressure that started while walking up subway stairs. Pain radiates to the left jaw and shoulder, accompanied by diaphoresis and mild nausea. History of hypertension and 25-pack-year smoking history.',
+    physicalExam: {
+      general: 'Diaphoretic, anxious-appearing male, sitting upright clutching chest.',
+      cardiac: 'Regular rhythm, normal S1/S2, soft S4 gallop, no murmurs or friction rubs.',
+      pulmonary: 'Clear to auscultation bilaterally, no wheezes or rales.',
+      extremities: 'No peripheral edema, warm extremities, 2+ radial pulses symmetric.'
+    },
+    availableInvestigations: [
+      { id: 'ecg', name: '12-Lead Electrocardiogram (ECG)', result: 'Sinus rhythm at 96 bpm, 2.5mm ST-elevation in leads II, III, and aVF with reciprocal ST-depression in leads I and aVL.' },
+      { id: 'trop', name: 'High-Sensitivity Troponin I', result: '312 ng/L (Reference: < 14 ng/L) - Significantly Elevated' },
+      { id: 'cxr', name: 'Portable Chest Radiograph', result: 'Normal cardiac silhouette, clear lung fields, no pneumothorax, normal mediastinal contour.' },
+      { id: 'cbc', name: 'Complete Blood Count & BMP', result: 'WBC 10.4 k/uL, Hemoglobin 14.8 g/dL, Creatinine 0.98 mg/dL, Glucose 142 mg/dL.' }
+    ],
+    diagnosisOptions: [
+      { id: 'gerd', label: 'Severe Gastroesophageal Reflux Disease (GERD)', feedback: 'Incorrect. Marked ST elevations in inferior leads and troponin leak signify myocardial infarction, not mucosal inflammation.' },
+      { id: 'stemi_inf', label: 'Acute Inferior ST-Elevation Myocardial Infarction (STEMI)', feedback: 'Correct! The retrosternal pressure radiating to jaw, classic inferior leads (II, III, aVF) ST elevation, and positive troponin demand immediate primary percutaneous coronary intervention (PPCI).' },
+      { id: 'pe', label: 'Massive Pulmonary Embolism', feedback: 'Incorrect. While PE can cause chest discomfort, classic localized inferior ST-elevations with reciprocal changes confirm acute transmural coronary occlusion.' },
+      { id: 'pericarditis', label: 'Acute Idiopathic Pericarditis', feedback: 'Incorrect. Pericarditis typically presents with diffuse concave ST elevation and PR depression, without localized reciprocal limb lead depression.' }
+    ],
+    correctDiagnosisId: 'stemi_inf'
+  },
+  {
+    id: 'case_2',
+    title: 'Case 02: 24-Year-Old Female with Acute Right Lower Abdominal Pain',
+    category: 'General Surgery / Gynecology',
+    difficulty: 'Challenging',
+    vitals: { hr: 104, bp: '118/74', rr: 18, temp: 38.3, spo2: 99 },
+    history: 'A 24-year-old graduate student presents with 14 hours of progressive abdominal pain. The discomfort started as a vague ache around the umbilicus and has now localized sharply to the right lower quadrant. She reports anorexia, 2 episodes of non-bloody emesis, and feeling feverish. LMP was 3 weeks ago.',
+    physicalExam: {
+      general: 'Lying still on stretcher with knees flexed; grimaces with any bed movement.',
+      cardiac: 'Tachycardic, regular, no murmurs.',
+      pulmonary: 'Lungs clear bilaterally.',
+      abdomen: 'Focal guarding and marked tenderness over McBurney point. Positive Rovsing sign and positive Psoas sign. Hypoactive bowel sounds.'
+    },
+    availableInvestigations: [
+      { id: 'bhcg', name: 'Urine & Serum Beta-hCG', result: 'Negative (< 2 mIU/mL) - Excludes intrauterine & ectopic pregnancy.' },
+      { id: 'cbc', name: 'Complete Blood Count (CBC)', result: 'WBC 16.2 k/uL with 86% neutrophils and left shift. Platelets 290k.' },
+      { id: 'ct_abd', name: 'IV Contrast-Enhanced Abdominal/Pelvic CT', result: 'Dilated, blind-ending tubular appendix measuring 11 mm in outer diameter with mural hyperenhancement and extensive periappendiceal fat stranding. No free perforation.' },
+      { id: 'ua', name: 'Urinalysis', result: 'Trace ketones, negative nitrites, 2-3 WBC/hpf, no hematuria.' }
+    ],
+    diagnosisOptions: [
+      { id: 'ruptured_ovarian', label: 'Ruptured Right Ovarian Cyst', feedback: 'Incorrect. While common in this demographic, the periumbilical migration, high-grade leukocytosis, and 11mm appendiceal dilation confirm acute appendicitis.' },
+      { id: 'appendicitis', label: 'Acute Non-Perforated Appendicitis', feedback: 'Correct! Classic progression from visceral periumbilical pain to somatic parietal RLQ peritoneal irritation, marked leukocytosis, and CT confirmation of dilated appendix.' },
+      { id: 'ectopic', label: 'Ruptured Ectopic Pregnancy', feedback: 'Incorrect. Negative beta-hCG definitively excludes gestation.' },
+      { id: 'nephrolithiasis', label: 'Right Ureteral Calculi (Kidney Stone)', feedback: 'Incorrect. Nephrolithiasis presents with colicky flank pain radiating to groin and hematuria, without high fever and marked appendiceal fat stranding.' }
+    ],
+    correctDiagnosisId: 'appendicitis'
+  },
+  {
+    id: 'case_3',
+    title: 'Case 03: 72-Year-Old Female with Worsening Cough, Confusion & Hypoxemia',
+    category: 'Internal Medicine / Pulmonology',
+    difficulty: 'Moderate',
+    vitals: { hr: 112, bp: '88/54', rr: 32, temp: 38.9, spo2: 87 },
+    history: 'A 72-year-old female resident of an assisted living facility is brought to the ED by ambulance due to 3 days of productive rust-colored sputum, shivering rigors, and new disorientation to time and place. Past history of COPD and osteopenia.',
+    physicalExam: {
+      general: 'Lethargic elderly woman, tachypneic with intercostal retractions on 2L NC.',
+      neuro: 'Alert only to self; disoriented to date, hospital, and purpose (AMT / GCS modified score 13).',
+      pulmonary: 'Coarse inspiratory crackles and bronchial breath sounds over the right middle and lower lung zones. Dullness to percussion at right lung base.',
+      cardiac: 'Tachycardia, soft systolic flow murmur, peripheral extremities cool.'
+    },
+    availableInvestigations: [
+      { id: 'cxr', name: 'Chest Radiograph (AP portable)', result: 'Dense lobar consolidation involving right middle and right lower lobes with visible air bronchograms. Mild right parapneumonic effusion.' },
+      { id: 'abg', name: 'Arterial Blood Gas (ABG, 4L O2)', result: 'pH 7.31, PaCO2 48 mmHg, PaO2 56 mmHg, HCO3 23 mEq/L, SaO2 88%. Acute hypoxemic respiratory failure.' },
+      { id: 'bmp', name: 'Basic Metabolic Panel', result: 'Sodium 133 mEq/L, Potassium 4.1 mEq/L, BUN 34 mg/dL (Elevated), Creatinine 1.6 mg/dL, Glucose 128 mg/dL.' },
+      { id: 'procal', name: 'Serum Procalcitonin', result: '4.8 ng/mL (High - consistent with invasive bacterial infection).' }
+    ],
+    diagnosisOptions: [
+      { id: 'copd_exac', label: 'Simple COPD Exacerbation without Infiltrate', feedback: 'Incorrect. The dense lobar consolidation, high fever, elevated procalcito
